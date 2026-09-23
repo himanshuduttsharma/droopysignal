@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>WebRTC Browser Sender</title><style>body{font:16px sans-serif;background:#10131a;color:#f4f7fb;margin:32px}video{width:640px;max-width:100%;background:#000;border-radius:8px}button{padding:10px 18px;margin:12px 0}#status{color:#61d4a8}</style></head>
+<body>
+<h1>Share your screen</h1>
+<p>Enter the room code shown in the native receiver window.</p>
+<input id="room" placeholder="Room code" maxlength="6" inputmode="numeric">
+<button id="start">Choose screen</button>
+<p id="status">Waiting for a room code</p>
+<video id="local" autoplay muted playsinline></video>
+<script>
+const status = document.getElementById('status');
+const localVideo = document.getElementById('local');
+let ws, pc;
+const send = value => ws.send(JSON.stringify(value));
+
+async function start() {
+  const room = document.getElementById('room').value.trim();
+  if (!/^\d{6}$/.test(room)) { status.textContent='Enter the 6-digit room code first'; return; }
+  localVideo.srcObject = await navigator.mediaDevices.getDisplayMedia({video:true, audio:true});
+  localVideo.srcObject.getVideoTracks()[0].onended = () => { status.textContent='Screen sharing stopped'; };
+  pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  for (const track of localVideo.srcObject.getTracks()) pc.addTrack(track, localVideo.srcObject);
+  pc.onicecandidate = e => e.candidate && send({type:'candidate', candidate:e.candidate.candidate, sdpMid:e.candidate.sdpMid, sdpMLineIndex:e.candidate.sdpMLineIndex});
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = async () => { send({type:'join', room, role:'sender'}); status.textContent='Waiting for native receiver…'; };
+  ws.onmessage = async e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'receiver-ready') {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      send({type:'offer', sdp:offer.sdp});
+      status.textContent='Offer sent';
+    } else if (msg.type === 'answer') {
+      await pc.setRemoteDescription({type:'answer', sdp:msg.sdp});
+      status.textContent='Connected to native receiver';
+    } else if (msg.type === 'candidate') {
+      await pc.addIceCandidate({candidate:msg.candidate, sdpMid:msg.sdpMid, sdpMLineIndex:msg.sdpMLineIndex});
+    }
+  };
+}
+document.getElementById('start').onclick = start;
+</script>
+</body>
+</html>
