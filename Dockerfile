@@ -15,4 +15,4 @@ COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 
-ENTRYPOINT ["dotnet", "WebRTCSignalling.dll"]
+ENTRYPOINT ["dotnet", "WebRTC.Signaling.dll"]
